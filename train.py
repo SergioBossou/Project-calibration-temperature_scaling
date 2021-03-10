@@ -3,8 +3,13 @@ Training script adapted from demo in
 https://github.com/gpleiss/efficient_densenet_pytorch
 """
 
-import fire
+# import fire
 import os
+import sys
+path = 'D:\\sbossou\\OneDrive - ERAAM\\projects\\misc\\2020_06_sergio_internship\\py'+'\\GitHub\\Project-calibration-temperature_scaling\\'
+sys.path.append('D:\\sbossou\\OneDrive - ERAAM\\projects\\misc\\2020_06_sergio_internship\\py'+'\\GitHub\\Project-calibration-temperature_scaling\\')
+
+
 import time
 import torch
 import torchvision as tv
@@ -251,4 +256,16 @@ if __name__ == '__main__':
         --valid_size (int) - size of validation set
         --seed (int) - manually set the random seed (default None)
     """
-    fire.Fire(train)
+
+    data = path + '\\data\\'
+    save = path + 'model\\'
+
+    block_config = [(40 - 4) // 6 for _ in range(3)]
+    model = DenseNet(
+        growth_rate=12,
+        block_config=block_config,
+        num_classes=100
+    )
+    params = torch.load(save + 'model.pth')
+    model.load_state_dict(params)
+    # fire.Fire(train)

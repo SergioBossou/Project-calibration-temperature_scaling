@@ -1,19 +1,24 @@
-import fire
+# import fire
 import os
+os.environ["KMP_DUPLICATE_LIB_OK"]="TRUE"
+import os
+import sys
+
 import torch
 import torchvision as tv
 from torch.utils.data.sampler import SubsetRandomSampler
 from models import DenseNet
 from temperature_scaling import ModelWithTemperature
+from platt_scaling import ModelWithPlatt
+from isotonic_regression import ModelWithIsotonic
 
-
-def demo(data, save, depth=40, growth_rate=12, batch_size=256):
+def demo(data, save, scaling_type='Temperature', depth=40, growth_rate=12, batch_size=256):
     """
-    Applies temperature scaling to a trained model.
+    Applies different scaling methods to a trained model.
 
     Takes a pretrained DenseNet-CIFAR100 model, and a validation set
     (parameterized by indices on train set).
-    Applies temperature scaling, and saves a temperature scaled version.
+    Applies scaling, and saves the network parameters.
 
     NB: the "save" parameter references a DIRECTORY, not a file.
     In that directory, there should be two files:
@@ -22,6 +27,7 @@ def demo(data, save, depth=40, growth_rate=12, batch_size=256):
 
     data (str) - path to directory where data should be loaded from/downloaded
     save (str) - directory with necessary files (see above)
+    scaling_type (str) - calibration model to be applied. Can either be 'Platt', 'Isotonic' or 'Temperature'. By default, temperature scaling is performed.
     """
     # Load model state dict
     model_filename = os.path.join(save, 'model.pth')
@@ -58,13 +64,28 @@ def demo(data, save, depth=40, growth_rate=12, batch_size=256):
     orig_model.load_state_dict(state_dict)
 
     # Now we're going to wrap the model with a decorator that adds temperature scaling
-    model = ModelWithTemperature(orig_model)
+    if scaling_type == 'Platt':
+        print('Platt scaling')
+        model = ModelWithPlatt(orig_model)
+
+    elif scaling_type == 'Isotonic':
+        print('Isotonic regression 1-vs-all')
+        model = ModelWithIsotonic(orig_model)
+
+    else:
+        print('Temperature')
+        model = ModelWithTemperature(orig_model)
+
 
     # Tune the model temperature, and save the results
+    model = model.eval()
     model.set_temperature(valid_loader)
-    model_filename = os.path.join(save, 'model_with_temperature.pth')
-    torch.save(model.state_dict(), model_filename)
-    print('Temperature scaled model sved to %s' % model_filename)
+    model_filename = os.path.join(save, 'model_with_{}.pth'.format(scaling_type))
+    if scaling_type == "Isotonic":
+        torch.save(model, model_filename)
+    else:
+        torch.save(model.state_dict(), model_filename)
+    print('Scaled model sved to %s' % model_filename)
     print('Done!')
 
 
@@ -84,4 +105,8 @@ if __name__ == '__main__':
     --data (str) - path to directory where data should be loaded from/downloaded
     --save (str) - directory with necessary files (see above)
     """
-    fire.Fire(demo)
+    path = 'D:\\sbossou\\OneDrive - ERAAM\\projects\\misc\\2020_06_sergio_internship\\py' + '\\GitHub\\Project-calibration-temperature_scaling\\'
+    # fire.Fire(demo)
+    data = path + '\\data\\'
+    save = path + '\\model'
+    demo(data, save,'Isotonic', depth=40, growth_rate=12, batch_size=256)

@@ -3,35 +3,37 @@ from torch import nn, optim
 from torch.nn import functional as F
 
 
-class ModelWithTemperature(nn.Module):
+class ModelWithPlatt(nn.Module):
     """
-    A thin decorator, which wraps a model with temperature scaling
+    A thin decorator, which wraps a model with Platt scaling
     model (nn.Module):
         A classification neural network
         NB: Output of the neural network should be the classification logits,
             NOT the softmax (or log softmax)!
     """
-    def __init__(self, model):
-        super(ModelWithTemperature, self).__init__()
+    def __init__(self, model, n_label=100):
+        super(ModelWithPlatt, self).__init__()
         self.model = model
-        self.temperature = nn.Parameter(torch.ones(1) * 1.5)
+        self.W = nn.Parameter(torch.ones(n_label))
+        self.b = nn.Parameter(torch.ones(n_label))
 
     def forward(self, input):
         logits = self.model(input)
-        return self.temperature_scale(logits)
+        return self.platt_scale(logits)
 
-    def temperature_scale(self, logits):
+    def platt_scale(self, logits):
         """
-        Perform temperature scaling on logits
+        Perform Platt scaling on logits
         """
         # Expand temperature to match the size of logits
-        temperature = self.temperature.unsqueeze(1).expand(logits.size(0), logits.size(1))
-        return logits / temperature
+        new_logits = logits * self.W + self.b.flatten()
 
-    # This function probably should live outside of this class, but whatever
+        return new_logits
+
+    # Sets the Platt scaling parameters. The name is set_temperature for convenience.
     def set_temperature(self, valid_loader):
         """
-        Tune the tempearature of the model (using the validation set).
+        Tune the parameters of the model (using the validation set).
         We're going to set it to optimize NLL.
         valid_loader (DataLoader): validation set loader
         """
@@ -54,23 +56,23 @@ class ModelWithTemperature(nn.Module):
         # Calculate NLL and ECE before temperature scaling
         before_temperature_nll = nll_criterion(logits, labels).item()
         before_temperature_ece = ece_criterion(logits, labels).item()
-        print('Before temperature - NLL: %.3f, ECE: %.3f' % (before_temperature_nll, before_temperature_ece))
+        print('Before Platt - NLL: %.3f, ECE: %.3f' % (before_temperature_nll, before_temperature_ece))
 
         # Next: optimize the temperature w.r.t. NLL
-        optimizer = optim.LBFGS([self.temperature], lr=0.01, max_iter=1000)
+        optimizer = optim.LBFGS([self.W, self.b], lr=0.01, max_iter=1000)
 
         def eval():
             optimizer.zero_grad()
-            loss = nll_criterion(self.temperature_scale(logits), labels)
+            loss = nll_criterion(self.platt_scale(logits), labels)
             loss.backward()
             return loss
+
         optimizer.step(eval)
 
         # Calculate NLL and ECE after temperature scaling
-        after_temperature_nll = nll_criterion(self.temperature_scale(logits), labels).item()
-        after_temperature_ece = ece_criterion(self.temperature_scale(logits), labels).item()
-        print('Optimal temperature: %.3f' % self.temperature.item())
-        print('After temperature - NLL: %.3f, ECE: %.3f' % (after_temperature_nll, after_temperature_ece))
+        after_platt_nll = nll_criterion(self.platt_scale(logits), labels).item()
+        after_platt_ece = ece_criterion(self.platt_scale(logits), labels).item()
+        print('After Platt - NLL: %.3f, ECE: %.3f' % (after_platt_nll, after_platt_ece))
 
         return self
 
